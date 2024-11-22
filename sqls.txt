@@ -1,0 +1,234 @@
+WITH RankedData AS (
+    SELECT
+    ticker, time, close,
+    ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY time DESC) AS rn
+    FROM stockdata
+    WHERE time <= 1100
+),
+avg_21 AS (
+    SELECT
+    ticker,
+    AVG(close) OVER (PARTITION BY ticker) AS avg_close
+    FROM
+        RankedData
+    where rn <= 21
+)
+select
+ticker, 1100, avg_close as sma
+from avg_21
+group by ticker,avg_close
+;
+
+==========================
+
+WITH RankedData AS (
+    SELECT
+    ticker, time, close, high, low, high - low AS curr_rr,
+    ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY time DESC) AS rn
+    FROM stockdata
+    WHERE time <= 1100 -- User-provided minute
+),
+prior_20 AS (
+    SELECT
+    ticker,
+    curr_rr,
+    max(high) OVER (PARTITION BY ticker) AS highest_high,
+    min(low) OVER (PARTITION BY ticker) AS lowest_low
+    FROM
+        RankedData
+    where rn < 21
+)
+select
+ticker, curr_rr/(highest_high - lowest_low) as rr
+from prior_20
+group by ticker
+;
+
+
+===================
+
+
+
+WITH RankedData AS (
+    SELECT
+    ticker, time, close, high, low, high - low AS curr_rr,
+    ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY time DESC) AS rn
+    FROM stockdata
+    WHERE time <= 1100 -- User-provided minute
+),
+prior_20 AS (
+    SELECT
+    ticker,
+    curr_rr,
+    max(high) OVER (PARTITION BY ticker) AS highest_high,
+    min(low) OVER (PARTITION BY ticker) AS lowest_low
+    FROM
+        RankedData
+    where rn < 21
+)
+select
+ticker,
+CASE
+    when highest_high = lowest_low then curr_rr
+    else curr_rr/(highest_high - lowest_low)
+END as rr
+from prior_20
+group by ticker
+;
+
+
+===========================
+
+
+WITH activity AS (
+    select ticker from stockdata where time = 1100
+),
+RankedData AS (
+    SELECT
+    ticker, time, high, low, high - low AS curr_rr,
+    ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY time DESC) AS rn
+    FROM stockdata
+    WHERE time <= 1100 -- User-provided minute
+    and ticker in (select ticker from activity)
+),
+filtered_list AS (
+    SELECT
+    ticker,
+    curr_rr,
+    max(high) OVER (PARTITION BY ticker) AS highest_high,
+    min(low) OVER (PARTITION BY ticker) AS lowest_low,
+    RANK() OVER (PARTITION BY ticker order by time desc) AS rn
+    FROM
+        RankedData
+    where rn < 21
+)
+select
+ticker, curr_rr, highest_high, lowest_low
+from filtered_list
+where rn = 1
+;
+
+
+
+============================
+
+WITH RankedData AS (
+    SELECT
+    ticker, time, close,
+    ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY time DESC) AS rn
+    FROM stockdata
+    WHERE time <= 1100
+),
+avg_21 AS (
+    SELECT
+    ticker,
+    AVG(close) OVER (PARTITION BY ticker) AS avg_close
+    FROM
+        RankedData
+    where rn <= 21
+),
+sma AS(
+    select
+    ticker, 1100 as time, avg_close as sma
+    from avg_21
+    group by ticker,avg_close
+),
+activity AS (
+    select ticker from stockdata where time = 1100
+),
+RankedData_rr AS (
+    SELECT
+    ticker, time, open, close, high, low, high - low AS curr_rr,
+    ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY time DESC) AS rn
+    FROM stockdata
+    WHERE time <= 1100 -- User-provided minute
+    and ticker in (select ticker from activity)
+),
+filtered_list AS (
+    SELECT
+    ticker, time, open, close, high, low,
+    curr_rr,
+    max(high) OVER (PARTITION BY ticker) AS highest_high,
+    min(low) OVER (PARTITION BY ticker) AS lowest_low,
+    RANK() OVER (PARTITION BY ticker order by time desc) AS rn
+    FROM
+        RankedData_rr
+    where rn < 21
+),
+rr AS (
+    select
+    ticker, time, open, close, high, low, curr_rr, highest_high, lowest_low
+    from filtered_list
+    where rn = 1
+)
+select 
+rr.ticker, rr.time, rr.open, rr.high, rr.low, rr.close,
+sma.sma as sma21,
+CASE
+when highest_high = lowest_low then curr_rr
+ELSE curr_rr/(highest_high - lowest_low)
+END as RangeRatio21
+from rr
+left join sma on sma.ticker = rr.ticker and sma.time = rr.time
+;
+
+==================================
+
+WITH ranked_data AS (
+                    SELECT
+                    ticker, time, close,
+                    ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY time DESC) AS rn
+                    FROM stockdata
+                    WHERE time <= 1000
+                ),
+                avg_21 AS (
+                    SELECT
+                    ticker,
+                    AVG(close) OVER (PARTITION BY ticker) AS avg_close
+                    FROM
+                        ranked_data
+                    where rn <= 21
+                ),
+                sma AS(
+                    select
+                    ticker, 1000 as time, avg_close as sma
+                    from avg_21
+                    group by ticker,avg_close
+                ),
+                activity AS (
+                    select ticker from stockdata where time = 1000
+                ),
+                ranked_data_rr AS (
+                    SELECT
+                    ticker, time, open, close, high, low, high - low AS curr_rr,
+                    ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY time DESC) AS rn
+                    FROM stockdata
+                    WHERE time <= 1000
+                    and ticker in (select ticker from activity)
+                ),
+                filtered_list AS (
+                    SELECT
+                    ticker, time, open, close, high, low,
+                    curr_rr,
+                    max(high) OVER (PARTITION BY ticker) AS highest_high,
+                    min(low) OVER (PARTITION BY ticker) AS lowest_low,
+                    RANK() OVER (PARTITION BY ticker order by time desc) AS rn
+                    FROM
+                        ranked_data_rr
+                    where rn < 21
+                ),
+                rr AS (
+                    select
+                    ticker, time, open, close, high, low, curr_rr, highest_high, lowest_low
+                    from filtered_list
+                    where rn = 1
+                )
+                select 
+                rr.ticker, rr.time, rr.open, rr.high, rr.low, rr.close,
+                sma.sma as sma21,
+                CASE
+                when highest_high = lowest_low then curr_rr
+                ELSE curr_rr/(highest_high - lowest_low)
+                END as RangeRatio21
+                from rr
+                left join sma on sma.ticker = rr.ticker and sma.time = rr.time
