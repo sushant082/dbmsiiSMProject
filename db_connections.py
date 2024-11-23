@@ -5,10 +5,10 @@ from psycopg2 import sql
 def connect_to_db(dbName):
     return psycopg2.connect(
         dbname=dbName,
-        user="postgres",
-        password="root",
-        host="localhost",
-        port=5432
+        user="",
+        password="",
+        host="",
+        port=
     )
 
 def execute(dbName,cmdTxt):
